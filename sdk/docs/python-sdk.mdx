@@ -1,0 +1,297 @@
+---
+title: "Python SDK · Oasis 3"
+description: "Connect to Oasis 3 from Python: prompt a scene, stream driving actions, and receive generated camera frames in real time over a single gRPC session."
+---
+
+Oasis 3 is a real-time, promptable world model. The `decart-oasis` SDK is the thin Python client
+that talks to it: you open a session, set a scene with a text prompt, send driving actions, and get
+back the next camera frames of the generated world. Actions in, frames out — no model to host.
+
+The SDK is intentionally lightweight (gRPC + frame decoding only). The reinforcement-learning
+examples, reward functions, and notebook visualization live in the separate `oasis-demo` package.
+
+## Quick start
+
+<Steps>
+  <Step title="Install">
+    ```bash
+    pip install decart-oasis
+    ```
+  </Step>
+  <Step title="Set your API key">
+    ```bash
+    export DECART_API_KEY="sk-..."
+    ```
+  </Step>
+  <Step title="Drive the world model">
+    ```python
+    from decart_oasis import A2VClient
+
+    # Reads DECART_API_KEY from the environment; uses the hosted Oasis endpoint by default.
+    with A2VClient() as client:
+        client.prompt("driving in an urban area")          # set the scene
+        result = client.infer(                             # send 4 actions, get 4 frames back
+            [[0.2, 0.0], [0.2, 0.0], [0.2, 0.1], [0.2, 0.1]]
+        )
+
+    front = result.frames["front"]   # list of 4 RGB frames (H×W×3 uint8 numpy arrays)
+    ```
+  </Step>
+</Steps>
+
+<Info>
+`A2VClient` is a context manager. Entering it calls `initialize()` (opening the session); exiting it
+calls `close()` (releasing the session and the gRPC channel) even if an error is raised.
+</Info>
+
+## How a session works
+
+Every interaction is one stateful session with four phases. The context-manager form above runs the
+lifecycle for you; you can also drive it explicitly:
+
+<Steps>
+  <Step title="Initialize">
+    Opens a session, authenticates, and negotiates the output format. Returns the streams the server
+    advertises (for Oasis 3: `left_forward`, `front`, `right_forward`).
+    ```python
+    client = A2VClient()
+    streams = client.initialize()
+    ```
+  </Step>
+  <Step title="Prompt">
+    Sets the scene the model generates. A new prompt resets the world-model context and the rollout,
+    so the action sequence restarts. Call it before your first `infer`, and again any time you want a
+    fresh scene.
+    ```python
+    client.prompt("driving on a highway at sunset")
+    ```
+  </Step>
+  <Step title="Infer">
+    Sends exactly **four** `[throttle, steering]` actions and returns **four** generated frames for
+    each stream. Call it in a loop to keep driving.
+    ```python
+    for _ in range(12):
+        result = client.infer([[0.2, 0.0], [0.2, 0.0], [0.2, 0.05], [0.2, 0.05]])
+    ```
+  </Step>
+  <Step title="Finish">
+    Releases the session and the channel.
+    ```python
+    client.close()
+    ```
+  </Step>
+</Steps>
+
+## Authentication
+
+Connecting requires a Decart API key. Pass it explicitly or set the `DECART_API_KEY` environment
+variable — the SDK reads the environment when no key is given.
+
+<CodeGroup>
+```python Environment variable
+import os
+os.environ["DECART_API_KEY"] = "sk-..."
+
+from decart_oasis import A2VClient
+client = A2VClient()                      # picks up DECART_API_KEY
+```
+
+```python Explicit argument
+from decart_oasis import A2VClient
+client = A2VClient(api_key="sk-...")      # overrides the environment
+```
+</CodeGroup>
+
+<Warning>
+A non-empty key is required. If it is missing or rejected, `initialize()` raises — locally as a
+`DecartRoboticsError`, or from the server as an `A2VError` with code `ERROR_CODE_INVALID_API_KEY`.
+</Warning>
+
+## Actions and frames
+
+Each `infer` call is one client-visible tick: a **chunk of four actions** in, **four frames per
+stream** out.
+
+| Field      | Shape / type                  | Range      | Meaning                                             |
+| ---------- | ----------------------------- | ---------- | --------------------------------------------------- |
+| `throttle` | `float`                       | `[-1, 1]`  | Forward (`+`) / brake or reverse (`−`)              |
+| `steering` | `float`                       | `[-1, 1]`  | Steer left (`−`) / right (`+`)                       |
+| action chunk | `(4, 2)` array-like         | —          | Four `[throttle, steering]` pairs, ordered in time  |
+
+```python
+import numpy as np
+
+# A gentle forward arc. Any nested sequence or numpy array of shape (4, 2) works.
+actions = np.array(
+    [[0.15, -0.10], [0.20, -0.04], [0.22, 0.04], [0.18, 0.10]],
+    dtype=np.float32,
+)
+result = client.infer(actions)
+```
+
+The call returns an `A2VResult`:
+
+| Attribute      | Type                          | Description                                                       |
+| -------------- | ----------------------------- | ----------------------------------------------------------------- |
+| `sequence_num` | `int`                         | Server tick index, starting at 0 and resetting on each `prompt`.  |
+| `frames`       | `dict[str, list[np.ndarray]]` | Per stream, the 4 decoded RGB frames (`H×W×3`, `uint8`).          |
+| `streams`      | `tuple[StreamInfo, ...]`      | The advertised streams and their dimensions.                      |
+
+```python
+result = client.infer(actions)
+result.sequence_num            # 0, then 1, 2, ...
+result.frames["front"][0]      # first front-camera frame, shape (512, 768, 3)
+set(result.frames)             # {"left_forward", "front", "right_forward"}
+```
+
+<Note>
+Actions must be finite and within `[-1, 1]`, and the chunk must be shape `(4, 2)` — otherwise
+`infer` raises `ValueError` before any request is sent.
+</Note>
+
+## Streaming frames live
+
+`A2VClient` accepts a `frame_consumer`: any object with `submit(frames)` and `new_clip()` methods
+(the `FrameConsumer` protocol). The client hands every decoded chunk to it as inference runs, so you
+can render or record without re-fetching. A ready-made notebook preview ships in `oasis-demo`
+(`oasis_demo.live_preview.LiveCameraPreview`).
+
+```python
+class Recorder:
+    def __init__(self): self.clips = [[]]
+    def new_clip(self): self.clips.append([])          # called on each prompt()
+    def submit(self, frames): self.clips[-1].append(frames)  # called on each infer()
+
+client = A2VClient(frame_consumer=Recorder())
+```
+
+## Client configuration
+
+```python
+A2VClient(
+    endpoint=None,            # defaults to the hosted Oasis endpoint
+    *,
+    api_key=None,             # defaults to $DECART_API_KEY
+    timeout=120.0,
+    tls=None,                 # auto-detected from the endpoint scheme
+    required_streams=("left_forward", "front", "right_forward"),
+    frame_consumer=None,
+)
+```
+
+| Parameter            | Type            | Default                         | Description                                                                 |
+| -------------------- | --------------- | ------------------------------- | --------------------------------------------------------------------------- |
+| `endpoint`           | `str`           | `https://oasis-grpc.decart.ai`  | gRPC endpoint. `https://` ⇒ TLS, `http://` ⇒ insecure.                      |
+| `api_key`            | `str`           | `$DECART_API_KEY`               | Decart API key. Required.                                                   |
+| `timeout`            | `float \| None` | `120.0`                         | Per-RPC timeout, in seconds.                                                |
+| `tls`                | `bool \| None`  | `None` (auto)                   | Force TLS on/off. Bare `host:port` endpoints default to TLS on.             |
+| `required_streams`   | `Sequence[str]` | left/front/right                | Streams the server must advertise, else `initialize()` raises.              |
+| `frame_consumer`     | `FrameConsumer` | `None`                          | Receives each decoded frame chunk during `infer`.                           |
+
+### Endpoint
+
+The SDK uses the hosted endpoint by default. Override it per-client, or via the
+`DECART_ROBOTICS_ENDPOINT` environment variable with `from_env()`:
+
+<CodeGroup>
+```python Default (hosted)
+client = A2VClient()                       # https://oasis-grpc.decart.ai
+```
+
+```python From environment
+# export DECART_ROBOTICS_ENDPOINT="https://your-oasis-grpc-endpoint"
+client = A2VClient.from_env()
+```
+
+```python Local / insecure
+client = A2VClient("localhost:50051", tls=False)
+```
+</CodeGroup>
+
+<Note>
+After `Initialize`, the load balancer pins the session by returning an `x-session-target` header.
+The SDK captures it and replays it on every later `Prompt`, `Infer`, and `Finish` — no action needed.
+</Note>
+
+## API reference
+
+| Method / property                  | Returns                  | Description                                                        |
+| ----------------------------------- | ------------------------ | ------------------------------------------------------------------ |
+| `initialize()`                      | `tuple[StreamInfo, ...]` | Open the session, authenticate, negotiate format, return streams.  |
+| `prompt(text: str)`                 | `None`                   | Set the scene; resets the rollout (sequence restarts at 0).        |
+| `infer(actions)`                    | `A2VResult`              | Send 4 `[throttle, steering]` actions; return 4 frames per stream. |
+| `close()`                           | `None`                   | Finish the session and release the gRPC channel.                   |
+| `from_env(...)` *(classmethod)*     | `A2VClient`              | Build a client, reading the endpoint from the environment.         |
+| `session_id`                        | `str \| None`            | Active session id, or `None` before `initialize`.                  |
+| `streams`                           | `tuple[StreamInfo, ...]` | The advertised streams.                                            |
+
+## Complete example
+
+```python
+import numpy as np
+from decart_oasis import A2VClient
+from decart_oasis.exceptions import A2VError, DecartRoboticsError
+
+actions = np.array(
+    [[0.2, 0.0], [0.2, 0.0], [0.2, 0.05], [0.2, 0.05]],
+    dtype=np.float32,
+)
+
+try:
+    with A2VClient() as client:                 # initialize() on enter, close() on exit
+        print("streams:", [s.name for s in client.streams])
+        client.prompt("driving in an urban area")
+        for _ in range(30):
+            result = client.infer(actions)
+        last_front = result.frames["front"][-1]  # (512, 768, 3) uint8
+        print("final frame:", last_front.shape, "tick:", result.sequence_num)
+except A2VError as exc:
+    print(f"service error {exc.code}: {exc.message}")
+except DecartRoboticsError as exc:
+    print(f"client error: {exc}")
+```
+
+## Error handling
+
+All SDK errors derive from `DecartRoboticsError`. Errors returned by the service are raised as
+`A2VError`, which carries the `code`, `message`, and `details` from the server.
+
+```python
+from decart_oasis.exceptions import A2VError, DecartRoboticsError
+```
+
+| Code                              | Meaning                                              |
+| --------------------------------- | ---------------------------------------------------- |
+| `ERROR_CODE_INVALID_SESSION`      | Session id not found or expired.                     |
+| `ERROR_CODE_ALREADY_FINISHED`     | The session was already finished.                    |
+| `ERROR_CODE_INVALID_REQUEST`      | Malformed request (e.g. bad action chunk).           |
+| `ERROR_CODE_INVALID_FORMAT`       | Requested output format not supported.               |
+| `ERROR_CODE_PROMPT_SET`           | Prompt-related error.                                |
+| `ERROR_CODE_UNSUPPORTED_SDK_VERSION` | The client SDK version is not accepted.           |
+| `ERROR_CODE_INVALID_API_KEY`      | API key missing or invalid.                          |
+
+## Technical specifications
+
+| | |
+| ----------------------- | ----------------------------------------------------------- |
+| **Model**               | `oasis-3-preview`                                           |
+| **Transport**           | gRPC (HTTP/2), TLS by default                               |
+| **Default endpoint**    | `https://oasis-grpc.decart.ai`                              |
+| **Output frames**       | VP9, decoded to RGB `H×W×3` `uint8` (via PyAV)              |
+| **Streams**             | `left_forward`, `front`, `right_forward` — 768×512 RGB      |
+| **Action chunk**        | 4 × `[throttle, steering]`, each in `[-1, 1]`               |
+| **Frames per call**     | 4 per stream                                               |
+| **Authentication**      | API key (`DECART_API_KEY`)                                 |
+| **Python**              | ≥ 3.10                                                     |
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="RL demo notebook" icon="notebook">
+    Train a PPO driving agent in Oasis 3 end-to-end, with a live preview — built on this SDK via the
+    `oasis-demo` package.
+  </Card>
+  <Card title="oasis-demo package" icon="cube">
+    Reward functions, a Gymnasium environment, behavior cloning, and the live notebook preview.
+  </Card>
+</CardGroup>

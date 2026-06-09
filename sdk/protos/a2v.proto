@@ -1,0 +1,97 @@
+// Decart Action-to-Video Service - gRPC API (A2V)
+//
+// Action-to-video inference: the model has no video input. Each Infer call
+// consumes 4 driving actions ({throttle, steering}) and returns 4 generated
+// video frames. The server runs the physics (DrivingActionController) and
+// produces the 4D AdaLN action consumed by the WM model.
+//
+// Lifecycle:
+// 1. Initialize - Allocate session, negotiate output frame format
+// 2. Prompt - Set the text prompt (scene/style)
+// 3. Infer (loop) - Send 4 actions, receive 4 frames
+// 4. Finish - Release resources, get statistics
+//
+// Session Management:
+// - session_id is a token, not tied to TCP connection
+// - If gRPC connection drops, reconnect and use the same session_id
+//
+syntax = "proto3";
+package decart.inference.a2v;
+
+option go_package = "github.com/decart/api/inference/a2v";
+
+import "common.proto";
+
+service A2VService {
+  rpc Initialize(InitializeRequest) returns (InitializeResponse);
+  rpc Prompt(PromptRequest) returns (PromptResponse);
+  rpc Infer(InferRequest) returns (InferResponse);
+  rpc Finish(FinishRequest) returns (FinishResponse);
+}
+
+message InitializeRequest {
+  string client_sdk_version = 1;
+  // Decart API key. Required; ERROR_CODE_INVALID_API_KEY.
+  string api_key = 2;
+  repeated decart.inference.common.FrameFormat accepted_output_formats = 3;
+}
+
+message InitializeResponse {
+  optional decart.inference.common.Error error = 1;
+  string session_id = 2;
+  decart.inference.common.FrameFormat output_format = 3;
+  repeated StreamInfo streams = 4;
+}
+
+enum SensorType {
+  SENSOR_TYPE_UNSPECIFIED = 0;
+  SENSOR_TYPE_RGB = 1;
+  SENSOR_TYPE_LIDAR = 2;
+  SENSOR_TYPE_RADAR = 3;
+}
+
+message StreamInfo {
+  string name = 1;
+  SensorType type = 2;
+  uint32 height = 3;
+  uint32 width = 4;
+}
+
+message PromptRequest {
+  string session_id = 1;
+  string prompt = 2;
+}
+
+message PromptResponse {
+  optional decart.inference.common.Error error = 1;
+}
+
+message Action {
+  float throttle = 1;
+  float steering = 2;
+}
+
+message InferRequest {
+  string session_id = 1;
+  uint64 sequence_num = 2;
+  repeated Action actions = 3;
+}
+
+message OutputStream {
+  string name = 1;
+  repeated bytes frames = 2;
+}
+
+message InferResponse {
+  uint64 sequence_num = 1;
+  optional decart.inference.common.Error error = 2;
+  repeated OutputStream streams = 3;
+}
+
+message FinishRequest {
+  string session_id = 1;
+}
+
+message FinishResponse {
+  optional decart.inference.common.Error error = 1;
+}

@@ -1,0 +1,46 @@
+// Shared types for Decart gRPC inference services.
+//
+// Service-specific protos (v2v, etc.) import
+// from here so that enum values stay consistent across protocols.
+syntax = "proto3";
+package decart.inference.common;
+
+option go_package = "github.com/decart/api/inference/common";
+
+enum ErrorCode {
+  ERROR_CODE_UNSPECIFIED = 0;
+
+  // Lifecycle errors
+  ERROR_CODE_INVALID_SESSION = 1;      // session_id not found or expired
+  ERROR_CODE_ALREADY_FINISHED = 2;     // Session already finished
+
+  // Request validation
+  ERROR_CODE_INVALID_REQUEST = 3;
+  ERROR_CODE_INVALID_MODEL = 4;
+  ERROR_CODE_INVALID_FORMAT = 5;
+  ERROR_CODE_INVALID_ENVIRONMENTS = 6;
+
+  // Prompt
+  ERROR_CODE_PROMPT_SET = 7;
+
+  // Client SDK version not supported by the server.
+  ERROR_CODE_UNSUPPORTED_SDK_VERSION = 8;
+
+  // API key missing or invalid.
+  ERROR_CODE_INVALID_API_KEY = 9;
+}
+
+enum FrameFormat {
+  FRAME_FORMAT_UNSPECIFIED = 0;
+  FRAME_FORMAT_JPEG = 1;
+  FRAME_FORMAT_H264 = 2;
+  FRAME_FORMAT_VP9 = 3;
+  FRAME_FORMAT_VP8 = 4;
+  FRAME_FORMAT_RAW_YUV420 = 5;  // Uncompressed YUV420p (I420): Y + U + V planes, w*h*1.5 bytes
+}
+
+message Error {
+  ErrorCode code = 1;
+  string message = 2;
+  map<string, string> details = 3;
+}

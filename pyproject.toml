@@ -1,0 +1,25 @@
+# uv workspace root for the public decart-robotics repo. For now it holds only the SDK
+# (sdk/ -> the decart-oasis package). The demo extras (oasis-demo) and the Colab notebook are
+# added in a later phase, once the SDK is published to PyPI.
+[tool.uv.workspace]
+members = ["sdk"]
+
+[dependency-groups]
+dev = [
+    "build>=1.2",
+    "hatchling>=1.25",
+    "pytest>=8.0",
+    "ruff>=0.6",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+# Generated protobuf stubs are not linted.
+extend-exclude = ["sdk/decart_oasis/_proto/*"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.pytest.ini_options]
+testpaths = ["sdk/tests"]
