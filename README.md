@@ -20,14 +20,25 @@ front = result.frames["front"]       # list of 4 RGB frames (H×W×3 uint8)
 The SDK lives in [`sdk/`](sdk) — see [`sdk/README.md`](sdk/README.md) for full usage and
 [`sdk/docs/python-sdk.mdx`](sdk/docs/python-sdk.mdx) for the reference.
 
-> The RL examples (`oasis-demo`) and the end-to-end Colab training notebook are added in a later
-> phase, once the SDK is on PyPI.
+## RL demo (`oasis-demo`)
+
+[`extras/`](extras) holds `oasis-demo`: a depth-collision reward, a Gymnasium env wrapping the SDK, a
+Stable-Baselines3 PPO policy with behavior cloning, and a live notebook preview — everything on top
+of the SDK for training a driving agent in Oasis. It pulls the full ML stack (torch,
+stable-baselines3, transformers), so it's a separate package. See [`extras/README.md`](extras/README.md).
+
+```bash
+git clone https://github.com/DecartAI/decart-robotics.git
+pip install -e decart-robotics/extras    # also pulls decart-oasis from PyPI
+```
+
+> The end-to-end Colab training notebook is added in a later phase.
 
 ## Development
 
 ```bash
-uv sync                  # installs the SDK (editable) + dev tools
-uv run pytest sdk/tests
+uv sync                  # installs the SDK + oasis-demo (editable) + dev tools
+uv run pytest            # sdk/tests + extras/tests
 uv run ruff check .
 ```
 

@@ -1,0 +1,44 @@
+[project]
+name = "oasis-demo"
+version = "0.0.1"
+description = "RL examples and notebook visualization for the Decart Oasis SDK (decart-oasis)."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+license-files = ["LICENSE"]
+authors = [{ name = "Decart" }]
+keywords = ["decart", "oasis", "reinforcement-learning", "stable-baselines3", "gymnasium"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+# This package IS the heavy half of the old monorepo, so its dependencies are flat (no extras):
+# the depth-collision reward, the Gymnasium env, the SB3 policy + behavior cloning, the live
+# notebook preview, and download helpers — all built on top of the decart-oasis SDK.
+dependencies = [
+    "decart-oasis>=0.0.1",
+    "ipython>=8.0",
+    "boto3>=1.34",
+    "gdown>=5.0",
+    "gymnasium>=0.29",
+    "stable-baselines3>=2.3",
+    "torch>=2.2",
+    "transformers>=4.53",
+    "tqdm>=4.66",
+]
+
+[project.urls]
+Homepage = "https://decart.ai"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["oasis_demo"]
+
+[tool.hatch.build.targets.sdist]
+include = ["oasis_demo", "README.md", "pyproject.toml"]

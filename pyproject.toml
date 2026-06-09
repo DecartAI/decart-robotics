@@ -1,8 +1,13 @@
-# uv workspace root for the public decart-robotics repo. For now it holds only the SDK
-# (sdk/ -> the decart-oasis package). The demo extras (oasis-demo) and the Colab notebook are
-# added in a later phase, once the SDK is published to PyPI.
+# uv workspace root for the public decart-robotics repo. It ties together the SDK (sdk/ -> the
+# decart-oasis package) and the demo extras (extras/ -> oasis-demo, the RL examples + visualization
+# that build on the SDK). The Colab notebook is added in a later phase.
 [tool.uv.workspace]
-members = ["sdk"]
+members = ["sdk", "extras"]
+
+# In development, oasis-demo's `decart-oasis` dependency resolves to the LOCAL sdk/ checkout. This is
+# dev-only metadata — the published oasis-demo wheel declares a plain `decart-oasis>=…` from PyPI.
+[tool.uv.sources]
+decart-oasis = { workspace = true }
 
 [dependency-groups]
 dev = [
@@ -22,4 +27,4 @@ extend-exclude = ["sdk/decart_oasis/_proto/*"]
 select = ["E", "F", "I", "UP", "B"]
 
 [tool.pytest.ini_options]
-testpaths = ["sdk/tests"]
+testpaths = ["sdk/tests", "extras/tests"]
