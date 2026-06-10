@@ -1,6 +1,6 @@
 # decart-robotics
 
-The Python SDK for Decart's **Oasis 3** real-time world model, published to PyPI as
+The Python SDK for Decart's **Oasis 3 Preview** real-time world model, published to PyPI as
 [`decart-oasis`](https://pypi.org/project/decart-oasis/).
 
 ```bash

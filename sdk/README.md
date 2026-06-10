@@ -1,6 +1,6 @@
 # decart-oasis
 
-Python SDK for connecting to Decart's **Oasis 3** action-to-video world model. You open a session,
+Python SDK for connecting to Decart's **Oasis 3 Preview** action-to-video world model. You open a session,
 set a scene with a prompt, send driving actions, and get back the generated camera frames — actions
 in, frames out.
 
