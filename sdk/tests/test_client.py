@@ -154,6 +154,7 @@ def test_explicit_api_key_overrides_env(monkeypatch):
     client = A2VClient("https://example.com", api_key="explicit-key", stub=stub)
     client.initialize()
     assert stub.initialize_request.api_key == "explicit-key"
+    assert stub.initialize_metadata == [("x-api-key", "explicit-key")]
 
 
 def test_client_streams_frames_to_consumer():
@@ -211,10 +212,11 @@ def test_client_reuses_session_target_metadata_after_initialize():
         client.infer(np.zeros((4, 2), dtype=np.float32))
 
     assert client.session_target == "pod-a"
-    assert stub.initialize_metadata == []
-    assert stub.prompt_metadata == [("x-session-target", "pod-a")]
-    assert stub.infer_metadata == [("x-session-target", "pod-a")]
-    assert stub.finish_metadata == [("x-session-target", "pod-a")]
+    assert stub.initialize_metadata == [("x-api-key", "test-key")]
+    authenticated_session = [("x-api-key", "test-key"), ("x-session-target", "pod-a")]
+    assert stub.prompt_metadata == authenticated_session
+    assert stub.infer_metadata == authenticated_session
+    assert stub.finish_metadata == authenticated_session
 
 
 def test_client_decodes_binary_session_target_metadata():
