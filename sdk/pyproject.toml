@@ -1,6 +1,6 @@
 [project]
 name = "decart-oasis"
-version = "0.0.1"
+version = "0.0.2"
 description = "Python SDK for connecting to Decart's Oasis action-to-video model."
 readme = "README.md"
 requires-python = ">=3.10"
