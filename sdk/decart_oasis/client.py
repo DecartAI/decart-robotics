@@ -67,7 +67,9 @@ class A2VClient:
         self._channel = channel if channel is not None else _create_channel(endpoint, tls=tls)
         self._stub = stub if stub is not None else a2v_pb2_grpc.A2VServiceStub(self._channel)
         self._session_id: str | None = None
-        self._metadata: list[tuple[str, str]] = []
+        self._metadata: list[tuple[str, str]] = (
+            [("x-api-key", self.api_key)] if self.api_key else []
+        )
         self._session_target: str | None = None
         self._sequence_num = 0
         self._streams: tuple[StreamInfo, ...] = ()
